@@ -1,4 +1,3 @@
-# remove-passwordneverexpires
 This Script has 4 functions
 	1) Main-Menu: self-explanitory
 	2) check-passNeverExpiresFlag
