@@ -4,15 +4,16 @@ clear-host
 
 $searchbaseROOT = "DC=your,DC=local"
 $searchbase     = $searchbaseROOT
-$Days           = 70 ## How many days back you want to go looking for passwords, keep in mind what your policy is
+$Days           = 70                     ## How many days back you want to go looking for passwords, keep in mind what your policy is
 $n              = 0
+$server         = "your-dc01.your.local" ## FQDN of you primary DC where all data will be read from and changes made to
 
 Function remove-PassNeverExpiresFlag 
 
     
     {   $date           = Get-Date
         $MaxAge         = ($Date).Adddays(-($Days)) 
-        $users          = Get-ADUser -Properties LastLogondate, passwordlastset, cannotchangepassword, DistinguishedName -Filter {(PasswordNeverExpires -eq "True") -And (Enabled -eq "True") -And (Passwordlastset -gt $MaxAge)  -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service_*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
+        $users          = Get-ADUser -server $server -Properties LastLogondate, passwordlastset, cannotchangepassword, DistinguishedName -Filter {(PasswordNeverExpires -eq "True") -And (Enabled -eq "True") -And (Passwordlastset -gt $MaxAge)  -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service_*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
        
         if (($users.count -eq 0) -or ($user.passwordneverexpires -like 'true') )
             { write-host "`nNo users match criteria." }
@@ -30,10 +31,10 @@ Function remove-PassNeverExpiresFlag
                 
                  write-host "`nRemoving 'password never expires' for: " -nonewline; write-host -f cyan $user.name                
                  
-                 Set-ADUser $user -PasswordNeverExpires $false
+                 Set-ADUser -server $server $user -PasswordNeverExpires $false
                  
                  # check to make sure it took.
-                 $check = get-aduser $user -properties *
+                 $check = Get-ADUser -server $server $user -properties *
                  
                  if ($check.passwordneverexpires -like 'false')
                     {
@@ -49,11 +50,11 @@ Function remove-PassNeverExpiresFlag
 Function check-PassNeverExpiresFlag
     {   $date           = Get-Date
         $MaxAge         = ($Date).Adddays(-($Days)) 
-        $users          = Get-ADUser -Properties LastLogondate, passwordlastset, cannotchangepassword, DistinguishedName -Filter {(PassWordNeverExpires -eq "True") -And (Enabled -eq "True") -And (Passwordlastset -gt $MaxAge) -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service_*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
+        $users          = Get-ADUser -server $server -Properties LastLogondate, passwordlastset, cannotchangepassword, DistinguishedName -Filter {(PassWordNeverExpires -eq "True") -And (Enabled -eq "True") -And (Passwordlastset -gt $MaxAge) -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service_*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
         
         foreach ($user in $users) {
-            $check   = get-aduser -identity $user -Properties PasswordNeverExpires, PasswordLastSet, LastLogonDate, CannotChangePassword, whencreated # | select-object PasswordNeverExpirs, PasswordLastSet, LastLogonDate, CannotChangePassword, WhenCreated, name, @{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}} #| ft name,passwordneverexpires,passwordlastset
-            $expDate = get-aduser -identity $user –Properties "DisplayName", "msDS-UserPasswordExpiryTimeComputed" | Select-Object -Property @{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}}
+            $check   = Get-ADUser -server $server -identity $user -Properties PasswordNeverExpires, PasswordLastSet, LastLogonDate, CannotChangePassword, whencreated # | select-object PasswordNeverExpirs, PasswordLastSet, LastLogonDate, CannotChangePassword, WhenCreated, name, @{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}} #| ft name,passwordneverexpires,passwordlastset
+            $expDate = Get-ADUser -server $server -identity $user –Properties "DisplayName", "msDS-UserPasswordExpiryTimeComputed" | Select-Object -Property @{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}}
             
             if (($check.PasswordNeverExpires -like 'true' ) -and ($check.CannotChangePassword -like 'true')) 
                 { }                                                                                                                                                                                                                                                                                                                                                     
@@ -129,13 +130,13 @@ Function check-PasswordAge
          $l                = 0
                
           ## users with old passwords that DONT have to change them
-             $users            = Get-ADUser -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,lastLogontimestamp -Filter { (Enabled -eq "True") -And (Passwordlastset -lt $policyMaxAge) -And (passwordneverexpires -eq $true) -And (Enabled -eq "True") -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
+             $users            = Get-ADUser -server $server -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,lastLogontimestamp -Filter { (Enabled -eq "True") -And (Passwordlastset -lt $policyMaxAge) -And (passwordneverexpires -eq $true) -And (Enabled -eq "True") -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
                                                                                                                                                                              
           ## users with old passwords that need to change them
-             $middleUsers      = Get-ADUser -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,lastLogontimestamp -Filter { (Enabled -eq "True") -And (Passwordlastset -lt $policyMaxAge) -And (passwordneverexpires -eq $false) -And (Enabled -eq "True") -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS")  } -SearchBase $SearchBase 
+             $middleUsers      = Get-ADUser -server $server -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,lastLogontimestamp -Filter { (Enabled -eq "True") -And (Passwordlastset -lt $policyMaxAge) -And (passwordneverexpires -eq $false) -And (Enabled -eq "True") -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS")  } -SearchBase $SearchBase 
       
           ## users with young passwords
-             $otherUsers       = Get-ADUser -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,lastLogontimestamp -Filter { (Enabled -eq "True") -And (Passwordlastset -ge $policyMaxAge) -And (Enabled -eq "True") -And (Passwordlastset -gt $MaxAge) -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
+             $otherUsers       = Get-ADUser -server $server -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,lastLogontimestamp -Filter { (Enabled -eq "True") -And (Passwordlastset -ge $policyMaxAge) -And (Enabled -eq "True") -And (Passwordlastset -gt $MaxAge) -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
                 
          write-host ""
          write-host ""
@@ -150,7 +151,7 @@ Function check-PasswordAge
                     if (($user.cannotchangepassword -eq $false) -and ($user.PasswordLastSet)) ## Users with old passswords AND can change them AND never forced to change them
                         {
                             $m = $m +1
-                            get-aduser $user -properties title,manager,mail,created,lastlogondate,passwordlastset,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,office,lastLogontimestamp | 
+                            Get-ADUser -server $server $user -properties title,manager,mail,created,lastlogondate,passwordlastset,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,office,lastLogontimestamp | 
                                 sort-object name | 
                                 Select-Object -Property name,samaccountname,title,office,created,passwordlastset,mail,manager,passwordneverexpires, `
                                 @{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}}, `
@@ -166,7 +167,7 @@ Function check-PasswordAge
                     if (($donkey.cannotchangepassword -eq $false) -and ($donkey.passwordlastset)) ## Users with young passwords and CAN change them
                         {
                             $d = $d + 1
-                            get-aduser $donkey -properties title,manager,mail,created,lastlogondate,passwordlastset,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,office,lastLogontimestamp | 
+                            Get-ADUser -server $server $donkey -properties title,manager,mail,created,lastlogondate,passwordlastset,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires,office,lastLogontimestamp | 
                                 sort-object name | 
                                 Select-Object -Property name,samaccountname,title,office,created,passwordlastset,mail,manager,passwordneverexpires, `
                                 @{Name="ExpiryDate";Expression={[datetime]::FromFileTime($_."msDS-UserPasswordExpiryTimeComputed")}},`
@@ -238,7 +239,7 @@ Function eliminate-PassNeverExpiresFlag
          $w                = 0
          
         ## users with old passwords that DONT have to change them
-            $users = Get-ADUser -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires -Filter { (Enabled -eq "True") -And (Passwordlastset -lt $policyMaxAge) -And (passwordneverexpires -eq $true) -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
+            $users = Get-ADUser -server $server -Properties passwordlastset,cannotchangepassword,msDS-UserPasswordExpiryTimeComputed,passwordneverexpires -Filter { (Enabled -eq "True") -And (Passwordlastset -lt $policyMaxAge) -And (passwordneverexpires -eq $true) -And (Name -notlike "*HealthMailbox*")  -AND (name -notlike "IUSR_*") -And (Name -notlike "IWAM_*") -And (Name -notlike "Service*") -And (Name -notlike "LDAP_ANONYMOUS") } -SearchBase $SearchBase 
             foreach ($z in $users) { if ($z.cannotchangepassword -eq $false) {$w = $w + 1}} ## count how many users do not have "cannot change password" flag set.
 
         ##write-host "You are about to remove the 'Password Never Expires' flag for $users.count users. Are you sure you want to do this?"
@@ -255,10 +256,10 @@ Function eliminate-PassNeverExpiresFlag
                                         $n = $n + 1
                                         write-host "Users attempted so far:" $n
                  
-                                        Set-ADUser $user -PasswordNeverExpires $false
+                                        Set-ADUser -server $server $user -PasswordNeverExpires $false
                                             ##write-host -f Magenta "syke"
                                         ## Check my work to see if it took.
-                                        $check = get-aduser $user -properties *
+                                        $check = Get-ADUser -server $server $user -properties *
                  
                                         if ($check.passwordneverexpires -like 'false') 
                                             { write-host "     ..." -nonewline; write-host -f green "success" -nonewline; write-host "." }
